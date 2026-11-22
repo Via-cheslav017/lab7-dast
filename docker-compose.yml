@@ -1,0 +1,36 @@
+name: lab7
+
+services:
+  target-vuln:
+    build: ./app
+    command: ["python", "app_vuln.py"]
+    ports: ["127.0.0.1:5000:5000"]
+    networks: [scan_net, host_net]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    pids_limit: 100
+
+  target-fixed:
+    build: ./app
+    command: ["python", "app_fixed.py"]
+    ports: ["127.0.0.1:5001:5000"]
+    networks: [scan_net, host_net]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    pids_limit: 100
+
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    profiles: ["scan"]
+    networks: [scan_net]
+    user: root
+    working_dir: /zap/wrk
+    volumes:
+      - ./reports:/zap/wrk:rw
+
+networks:
+  scan_net:
+    internal: true
+  host_net: {}

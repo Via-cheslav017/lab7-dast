@@ -1,0 +1,49 @@
+name: dast-security
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Ціль сканування (target-vuln або target-fixed)"
+        default: "target-fixed"
+
+jobs:
+  dast:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: ${{ github.event.inputs.target || 'target-fixed' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Збирання та запуск цілей в ізольованій мережі
+        run: docker compose up -d --build target-vuln target-fixed
+
+      - name: Активне сканування ZAP
+        run: |
+          mkdir -p reports
+          docker compose --profile scan run --rm zap zap-full-scan.py \
+            -t http://${TARGET}:5000 -J zap-ci.json -r zap-ci.html -T 10 -I
+
+      - name: Реєстр знахідок і gate (зупинка за критичними)
+        run: python scripts/triage.py reports/zap-ci.json reports/registry-ci.md --gate
+
+      - name: SBOM (CycloneDX)
+        if: always()
+        run: |
+          pip install cyclonedx-bom
+          mkdir -p sbom
+          cyclonedx-py requirements app/requirements.txt --of JSON -o sbom/sbom.json
+
+      - name: Збереження артефактів
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            reports/
+            sbom/
